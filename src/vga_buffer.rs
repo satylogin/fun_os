@@ -6,7 +6,7 @@ const BUFFER_HEIGHT: usize = 25;
 const BUFFER_WIDTH: usize = 80;
 
 lazy_static! {
-    pub(crate) static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
+    static ref WRITER: Mutex<Writer> = Mutex::new(Writer {
         column_position: 0,
         color_code: ColorCode::new(Color::Yellow, Color::Black),
         // SAFETY: 0xb8000 is the starting address of VGA buffer.
@@ -26,14 +26,15 @@ macro_rules! println {
 }
 
 #[doc(hidden)]
-pub(crate) fn _print(args: fmt::Arguments) {
+pub fn _print(args: fmt::Arguments) {
     use core::fmt::Write;
     WRITER.lock().write_fmt(args).unwrap();
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[allow(dead_code)]
+#[derive(Clone, PartialEq, Eq)]
 #[repr(u8)]
-pub(crate) enum Color {
+enum Color {
     Black = 0,
     Blue = 1,
     Green = 2,
@@ -74,7 +75,7 @@ struct Buffer {
     chars: [[ScreenChar; BUFFER_WIDTH]; BUFFER_HEIGHT],
 }
 
-pub struct Writer {
+struct Writer {
     column_position: usize,
     color_code: ColorCode,
     buffer: &'static mut Buffer,
@@ -95,7 +96,7 @@ impl fmt::Write for Writer {
 }
 
 impl Writer {
-    pub(crate) fn write_byte(&mut self, byte: u8) {
+    fn write_byte(&mut self, byte: u8) {
         match byte {
             b'\n' => self.new_line(),
             byte => {
@@ -144,5 +145,28 @@ impl Writer {
     fn read(&self, row: usize, col: usize) -> ScreenChar {
         // SAFETY: we are readding from a valid VGA buffer location.
         unsafe { core::ptr::read_volatile(&self.buffer.chars[row][col] as *const ScreenChar) }
+    }
+}
+
+#[test_case]
+fn println_single_line() {
+    let s = "single line";
+    println!("{}", s);
+    for (i, c) in s.chars().enumerate() {
+        assert_eq!(WRITER.lock().read(BUFFER_HEIGHT - 2, i).byte, c as u8);
+    }
+}
+
+#[test_case]
+fn println_multi_line() {
+    let f = "first line";
+    let s = "second line";
+    println!("{}", f);
+    println!("{}", s);
+    for (i, c) in f.chars().enumerate() {
+        assert_eq!(WRITER.lock().read(BUFFER_HEIGHT - 3, i).byte, c as u8);
+    }
+    for (i, c) in s.chars().enumerate() {
+        assert_eq!(WRITER.lock().read(BUFFER_HEIGHT - 2, i).byte, c as u8);
     }
 }
